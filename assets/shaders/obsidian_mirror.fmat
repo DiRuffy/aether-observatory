@@ -1,0 +1,84 @@
+material {
+  name: "ObsidianMirror",
+  shading_model: lit,
+  blending: opaque,
+  culling: back,
+  engine_inputs: [ planar_reflection ],
+  parameters: [
+    { type: vec3, name: obsidian_tint, default: [0.03, 0.04, 0.07] },
+    { type: vec3, name: rune_color, default: [0.22, 0.85, 1.0] },
+    { type: float, name: reflection_strength, default: 0.72 },
+    { type: float, name: rune_intensity, default: 1.5 },
+    { type: float, name: shockwave_radius, default: -2.0 },
+    { type: float, name: shockwave_strength, default: 0.0 },
+    { type: float, name: surface_roughness, default: 0.14 },
+  ],
+}
+
+fragment {
+  void Surface(inout MaterialInputs material) {
+    vec3 N = GetWorldNormal();
+    vec3 V = GetViewDirection();
+    vec3 P = GetWorldPosition();
+    float t = GetTime();
+
+    float r = length(P.xz);
+    float angle = atan(P.z, P.x);
+
+    // Subtle concentric carved stone/obsidian micro-grooves & sacred geometry rings.
+    float ring1 = smoothstep(0.055, 0.0, abs(r - 2.35));
+    float ring2 = smoothstep(0.06, 0.0, abs(r - 4.15));
+    float ring3 = smoothstep(0.075, 0.0, abs(r - 6.10));
+    float ring4 = smoothstep(0.08, 0.0, abs(r - 8.20));
+
+    // Rotating orbital compass tick marks between rings.
+    float ticks_inner = smoothstep(0.92, 0.99, cos(angle * 24.0 + t * 0.18))
+        * smoothstep(0.28, 0.0, abs(r - 3.25));
+    float ticks_outer = smoothstep(0.95, 0.995, cos(angle * 36.0 - t * 0.12))
+        * smoothstep(0.32, 0.0, abs(r - 5.15));
+
+    // Cardinal meridian spokes radiating cleanly from center plinth.
+    float spokes = smoothstep(0.994, 0.999, abs(cos(angle * 4.0)))
+        * smoothstep(1.2, 2.0, r)
+        * (1.0 - smoothstep(7.8, 8.6, r));
+
+    // Gentle traveling light wave across the sacred rings.
+    float wave_pulse = 0.65 + 0.35 * sin(r * 1.4 - t * 2.1);
+
+    // Expanding Aether Surge shockwave across the obsidian terrace.
+    float sw_dist = abs(r - material_params.shockwave_radius);
+    float shockwave = smoothstep(0.75, 0.0, sw_dist)
+        * clamp(material_params.shockwave_strength, 0.0, 2.0);
+
+    float rune_mask = clamp(
+      (ring1 * 1.0 + ring2 * 0.85 + ring3 * 0.9 + ring4 * 0.7 +
+       ticks_inner * 0.6 + ticks_outer * 0.5 + spokes * 0.65) * wave_pulse,
+      0.0,
+      1.5
+    );
+
+    // Dark obsidian mirror base with subtle radial polish gradient.
+    float radial_fade = 1.0 - smoothstep(6.5, 11.5, r);
+    material.base_color = vec4(material_params.obsidian_tint, 1.0);
+    material.metallic = mix(0.28, 0.10, clamp(rune_mask, 0.0, 1.0));
+    material.roughness = clamp(
+      material_params.surface_roughness + (1.0 - radial_fade) * 0.22,
+      0.04,
+      0.95
+    );
+
+    // True planar reflection blended via Fresnel so gazing angles look like dark glass.
+    float ndotv = clamp(dot(N, V), 0.0, 1.0);
+    float fresnel = mix(0.32, 0.95, pow(1.0 - ndotv, 3.0));
+    vec4 refl = GetPlanarReflection();
+    vec3 mirror_glow = refl.rgb * refl.a * material_params.reflection_strength * fresnel * radial_fade;
+
+    // Combine glowing sacred-geometry inlays, shockwave ring, and planar mirror reflection.
+    vec3 rune_emission = material_params.rune_color * (
+      rune_mask * material_params.rune_intensity + shockwave * 4.8
+    );
+    material.emissive = mirror_glow + rune_emission;
+
+    PrepareMaterial(material);
+  }
+}
